@@ -3,7 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
 REM ============================================================
-REM  Delete GitHub repository script
+REM  Delete GitHub repository script V2
 REM  This script does NOT touch your local project files.
 REM  It uses GitHub CLI: gh repo delete
 REM ============================================================
@@ -64,6 +64,6 @@ echo   %OWNER_REPO%
 echo.
 echo Next step:
 echo   1. Recreate an EMPTY GitHub repo named thermal_stm32.
-echo   2. Run github_first_upload_no_conflict.cmd.
+echo   2. Run github_first_upload_no_conflict_v2.cmd.
 pause
 exit /b 0

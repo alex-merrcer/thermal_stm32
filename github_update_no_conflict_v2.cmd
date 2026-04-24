@@ -3,7 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 
 REM ============================================================
-REM  RedPic1 safe incremental update script - NO pull / merge / rebase
+REM  RedPic1 safe incremental update script V2 - NO pull / merge / rebase
 REM  It will NOT edit your .c/.h source files.
 REM  If remote and local histories diverge, this script STOPS.
 REM ============================================================
@@ -44,12 +44,11 @@ cd /d "%PROJECT_PATH%" || (
 )
 
 if not exist ".git\" (
-    echo [ERROR] .git not found. Run github_first_upload_no_conflict.cmd first.
+    echo [ERROR] .git not found. Run github_first_upload_no_conflict_v2.cmd first.
     pause
     exit /b 1
 )
 
-REM Do not continue if source files still contain Git conflict markers.
 call :check_conflict_markers || exit /b 1
 
 if exist ".git\rebase-merge" goto git_state_error
@@ -58,7 +57,7 @@ if exist ".git\MERGE_HEAD" goto git_state_error
 
 git rev-parse --verify HEAD >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] This repo has no commit yet. Run github_first_upload_no_conflict.cmd first.
+    echo [ERROR] This repo has no commit yet. Run github_first_upload_no_conflict_v2.cmd first.
     pause
     exit /b 1
 )
@@ -170,13 +169,21 @@ echo [ERROR] Git command failed. No pull/merge/rebase was performed.
 pause
 exit /b 1
 
+
 :check_conflict_markers
 set "SCAN_FILE=%TEMP%\redpic1_conflict_scan.txt"
 del "%SCAN_FILE%" >nul 2>nul
-findstr /S /N /C:"<<<<<<<" /C:"=======" /C:">>>>>>>" *.c *.h *.cpp *.hpp *.s *.asm > "%SCAN_FILE%" 2>nul
+
+REM Only match REAL Git conflict marker lines:
+REM   <<<<<<< HEAD
+REM   =======
+REM   >>>>>>> commit-id
+REM Do NOT match comment separators such as /* ======================== */
+findstr /S /N /R /C:"^<<<<<<<" /C:"^=======$" /C:"^>>>>>>>" *.c *.h *.cpp *.hpp *.s *.asm > "%SCAN_FILE%" 2>nul
+
 if exist "%SCAN_FILE%" (
     for %%A in ("%SCAN_FILE%") do if %%~zA GTR 0 (
-        echo [ERROR] Git conflict markers were found in source files:
+        echo [ERROR] Real Git conflict markers were found in source files:
         type "%SCAN_FILE%"
         echo.
         echo Fix these files first. This script will not upload broken source code.
@@ -224,3 +231,4 @@ if errorlevel 1 (
     echo [INFO] Local excludes already installed.
 )
 exit /b 0
+
