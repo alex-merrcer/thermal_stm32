@@ -69,6 +69,26 @@ typedef struct
     uint32_t lcd_dma_last_us;
     uint32_t lcd_dma_max_us;
     uint32_t lcd_dma_avg_us;
+    uint32_t lcd_dma_render_samples;
+    uint32_t lcd_dma_render_last_us;
+    uint32_t lcd_dma_render_max_us;
+    uint32_t lcd_dma_render_avg_us;
+    uint32_t lcd_dma_start_samples;
+    uint32_t lcd_dma_start_last_us;
+    uint32_t lcd_dma_start_max_us;
+    uint32_t lcd_dma_start_avg_us;
+    uint32_t lcd_dma_wait_samples;
+    uint32_t lcd_dma_wait_last_us;
+    uint32_t lcd_dma_wait_max_us;
+    uint32_t lcd_dma_wait_avg_us;
+    uint32_t lcd_dma_spi_idle_samples;
+    uint32_t lcd_dma_spi_idle_last_us;
+    uint32_t lcd_dma_spi_idle_max_us;
+    uint32_t lcd_dma_spi_idle_avg_us;
+    uint32_t lcd_dma_overlay_samples;
+    uint32_t lcd_dma_overlay_last_us;
+    uint32_t lcd_dma_overlay_max_us;
+    uint32_t lcd_dma_overlay_avg_us;
 
     float latest_min_temp;
     float latest_max_temp;
@@ -130,6 +150,11 @@ void app_perf_baseline_record_gray_us(uint32_t elapsed_us);
 void app_perf_baseline_record_thermal_step_us(uint32_t elapsed_us);
 void app_perf_baseline_record_lcd_dma_result(uint32_t elapsed_us,
                                              app_perf_lcd_dma_status_t status);
+void app_perf_baseline_record_lcd_dma_render_us(uint32_t elapsed_us);
+void app_perf_baseline_record_lcd_dma_start_us(uint32_t elapsed_us);
+void app_perf_baseline_record_lcd_dma_wait_us(uint32_t elapsed_us);
+void app_perf_baseline_record_lcd_dma_spi_idle_us(uint32_t elapsed_us);
+void app_perf_baseline_record_lcd_dma_overlay_us(uint32_t elapsed_us);
 void app_perf_baseline_record_task_notify(app_perf_notify_target_t target);
 void app_perf_baseline_record_key_queue_drop(void);
 void app_perf_baseline_record_ui_msg_drop(void);

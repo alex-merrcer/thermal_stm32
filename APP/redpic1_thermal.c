@@ -139,7 +139,7 @@
 
 /* 显示窗口平滑策略参数 */
 #define REDPIC1_THERMAL_DISPLAY_WINDOW_MIN_SPAN_C      1.5f         ///< 强制保留的最小显示温差跨度，防止灰度映射失效
-#define REDPIC1_THERMAL_DISPLAY_WINDOW_EMA_ALPHA       0.4f        ///< 指数移动平均 (EMA) 权重系数，值越小越平滑
+#define REDPIC1_THERMAL_DISPLAY_WINDOW_EMA_ALPHA       0.25f        ///< 指数移动平均 (EMA) 权重系数，值越小越平滑
 #define REDPIC1_THERMAL_DISPLAY_WINDOW_MAX_STEP_C      0.75f        ///< 单帧窗口最大允许跳变值，抑制画面闪烁
 
 /* ========================================================================= */

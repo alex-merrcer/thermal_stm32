@@ -80,6 +80,11 @@ static app_perf_stat_accum_t s_get_temp_stats;
 static app_perf_stat_accum_t s_gray_stats;
 static app_perf_stat_accum_t s_thermal_step_stats;
 static app_perf_stat_accum_t s_lcd_dma_stats;
+static app_perf_stat_accum_t s_lcd_dma_render_stats;
+static app_perf_stat_accum_t s_lcd_dma_start_stats;
+static app_perf_stat_accum_t s_lcd_dma_wait_stats;
+static app_perf_stat_accum_t s_lcd_dma_spi_idle_stats;
+static app_perf_stat_accum_t s_lcd_dma_overlay_stats;
 
 static uint8_t app_perf_baseline_scheduler_running(void)
 {
@@ -224,6 +229,11 @@ void app_perf_baseline_reset(void)
     app_perf_stat_reset(&s_gray_stats);
     app_perf_stat_reset(&s_thermal_step_stats);
     app_perf_stat_reset(&s_lcd_dma_stats);
+    app_perf_stat_reset(&s_lcd_dma_render_stats);
+    app_perf_stat_reset(&s_lcd_dma_start_stats);
+    app_perf_stat_reset(&s_lcd_dma_wait_stats);
+    app_perf_stat_reset(&s_lcd_dma_spi_idle_stats);
+    app_perf_stat_reset(&s_lcd_dma_overlay_stats);
 
     if (app_perf_baseline_scheduler_running() != 0U)
     {
@@ -385,6 +395,51 @@ void app_perf_baseline_record_lcd_dma_result(uint32_t elapsed_us,
 #else
     (void)elapsed_us;
     (void)status;
+#endif
+}
+
+void app_perf_baseline_record_lcd_dma_render_us(uint32_t elapsed_us)
+{
+#if APP_PERF_BASELINE_ENABLE
+    app_perf_stat_add(&s_lcd_dma_render_stats, elapsed_us);
+#else
+    (void)elapsed_us;
+#endif
+}
+
+void app_perf_baseline_record_lcd_dma_start_us(uint32_t elapsed_us)
+{
+#if APP_PERF_BASELINE_ENABLE
+    app_perf_stat_add(&s_lcd_dma_start_stats, elapsed_us);
+#else
+    (void)elapsed_us;
+#endif
+}
+
+void app_perf_baseline_record_lcd_dma_wait_us(uint32_t elapsed_us)
+{
+#if APP_PERF_BASELINE_ENABLE
+    app_perf_stat_add(&s_lcd_dma_wait_stats, elapsed_us);
+#else
+    (void)elapsed_us;
+#endif
+}
+
+void app_perf_baseline_record_lcd_dma_spi_idle_us(uint32_t elapsed_us)
+{
+#if APP_PERF_BASELINE_ENABLE
+    app_perf_stat_add(&s_lcd_dma_spi_idle_stats, elapsed_us);
+#else
+    (void)elapsed_us;
+#endif
+}
+
+void app_perf_baseline_record_lcd_dma_overlay_us(uint32_t elapsed_us)
+{
+#if APP_PERF_BASELINE_ENABLE
+    app_perf_stat_add(&s_lcd_dma_overlay_stats, elapsed_us);
+#else
+    (void)elapsed_us;
 #endif
 }
 
@@ -699,6 +754,26 @@ void app_perf_baseline_get_snapshot(app_perf_baseline_snapshot_t *snapshot)
     snapshot->lcd_dma_last_us = s_lcd_dma_stats.last;
     snapshot->lcd_dma_max_us = s_lcd_dma_stats.max;
     snapshot->lcd_dma_avg_us = app_perf_stat_avg(&s_lcd_dma_stats);
+    snapshot->lcd_dma_render_samples = s_lcd_dma_render_stats.count;
+    snapshot->lcd_dma_render_last_us = s_lcd_dma_render_stats.last;
+    snapshot->lcd_dma_render_max_us = s_lcd_dma_render_stats.max;
+    snapshot->lcd_dma_render_avg_us = app_perf_stat_avg(&s_lcd_dma_render_stats);
+    snapshot->lcd_dma_start_samples = s_lcd_dma_start_stats.count;
+    snapshot->lcd_dma_start_last_us = s_lcd_dma_start_stats.last;
+    snapshot->lcd_dma_start_max_us = s_lcd_dma_start_stats.max;
+    snapshot->lcd_dma_start_avg_us = app_perf_stat_avg(&s_lcd_dma_start_stats);
+    snapshot->lcd_dma_wait_samples = s_lcd_dma_wait_stats.count;
+    snapshot->lcd_dma_wait_last_us = s_lcd_dma_wait_stats.last;
+    snapshot->lcd_dma_wait_max_us = s_lcd_dma_wait_stats.max;
+    snapshot->lcd_dma_wait_avg_us = app_perf_stat_avg(&s_lcd_dma_wait_stats);
+    snapshot->lcd_dma_spi_idle_samples = s_lcd_dma_spi_idle_stats.count;
+    snapshot->lcd_dma_spi_idle_last_us = s_lcd_dma_spi_idle_stats.last;
+    snapshot->lcd_dma_spi_idle_max_us = s_lcd_dma_spi_idle_stats.max;
+    snapshot->lcd_dma_spi_idle_avg_us = app_perf_stat_avg(&s_lcd_dma_spi_idle_stats);
+    snapshot->lcd_dma_overlay_samples = s_lcd_dma_overlay_stats.count;
+    snapshot->lcd_dma_overlay_last_us = s_lcd_dma_overlay_stats.last;
+    snapshot->lcd_dma_overlay_max_us = s_lcd_dma_overlay_stats.max;
+    snapshot->lcd_dma_overlay_avg_us = app_perf_stat_avg(&s_lcd_dma_overlay_stats);
 
     snapshot->latest_min_temp = s_latest_min_temp;
     snapshot->latest_max_temp = s_latest_max_temp;

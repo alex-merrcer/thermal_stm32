@@ -326,7 +326,7 @@ static const uint32_t s_power_screen_off_options_ms[] =
 #define PAGE_ASYNC_TIMEOUT_WIFI_MS  3000UL
 #define PAGE_ASYNC_TIMEOUT_OTA_MS   7000UL
 #define PERF_BASELINE_REFRESH_MS    250UL
-#define PERF_SUBPAGE_COUNT          4U
+#define PERF_SUBPAGE_COUNT          5U
 #define PERF_LABEL_X                12U
 #define PERF_VALUE_X                180U
 #define PERF_TIMING_VALUE_X         106U
@@ -2799,6 +2799,7 @@ static void perf_baseline_draw_layout(uint8_t enabled)
 {
     static const char *s_snapshot_labels[4] = { "FPS", "MinT", "MaxT", "CtrT" };
     static const char *s_timing_labels[4] = { "Frame L/A/M", "Temp  L/A/M", "Gray  L/A/M", "DMA   L/A/M" };
+    static const char *s_lcd_dma_detail_labels[4] = { "RndrF L/A/M", "DStrt L/A/M", "DWait L/A/M", "SPIId L/A/M" };
     static const char *s_counter_labels[4] = { "KeyQ Drop", "UIQ Drop", "SvcQ Fail", "UART Err" };
     static const char *s_health_labels[4] = { "Wdg Fault", "Miss Prog", "Therm Act", "Screen" };
     static const char *s_disabled_labels[4] = { "Status", "Switch", "Action", "Scope" };
@@ -2822,6 +2823,9 @@ static void perf_baseline_draw_layout(uint8_t enabled)
         case 3U:
             labels = s_health_labels;
             break;
+        case 4U:
+            labels = s_lcd_dma_detail_labels;
+            break;
         case 0U:
         default:
             labels = s_snapshot_labels;
@@ -2839,7 +2843,6 @@ static void perf_baseline_draw_layout(uint8_t enabled)
     app_display_runtime_unlock();
 }
 
-/* 将温度值格式化为一位小数文本�?*/
 static void perf_baseline_format_temp(char *buffer,
                                       uint16_t buffer_len,
                                       float temp,
@@ -3022,7 +3025,72 @@ static void perf_baseline_draw_timing(const app_perf_baseline_snapshot_t *snapsh
     perf_baseline_draw_footer_text(footer1, footer2);
 }
 
-/* 绘制性能基线计数器页�?*/
+static void perf_baseline_draw_lcd_dma_detail(const app_perf_baseline_snapshot_t *snapshot)
+{
+    char value[24];
+    char overlay[24];
+    char footer1[32];
+    char footer2[32];
+    const char *d1_state = "OFF";
+    unsigned long stripe_rows = 1UL;
+
+    if (snapshot == 0)
+    {
+        return;
+    }
+
+#if (REDPIC1_THERMAL_STAGE6R_ENABLE != 0U) && \
+    (REDPIC1_THERMAL_STAGE6R_1_ENABLE != 0U) && \
+    (REDPIC1_THERMAL_STAGE6R_2_ENABLE != 0U) && \
+    (REDPIC1_THERMAL_STAGE6R_3_ENABLE != 0U) && \
+    (REDPIC1_THERMAL_STAGE6R_D1_ENABLE != 0U)
+    d1_state = "ON";
+    stripe_rows = (unsigned long)REDPIC1_THERMAL_STAGE6R_D1_STRIPE_ROWS;
+#endif
+
+    perf_baseline_format_triplet(value,
+                                 sizeof(value),
+                                 snapshot->lcd_dma_render_last_us,
+                                 snapshot->lcd_dma_render_avg_us,
+                                 snapshot->lcd_dma_render_max_us,
+                                 (snapshot->lcd_dma_render_samples != 0U) ? 1U : 0U);
+    perf_baseline_draw_timing_value_text(page_list_item_y(UI_CONTENT_TOP, 0U), value, DARKBLUE);
+
+    perf_baseline_format_triplet(value,
+                                 sizeof(value),
+                                 snapshot->lcd_dma_start_last_us,
+                                 snapshot->lcd_dma_start_avg_us,
+                                 snapshot->lcd_dma_start_max_us,
+                                 (snapshot->lcd_dma_start_samples != 0U) ? 1U : 0U);
+    perf_baseline_draw_timing_value_text(page_list_item_y(UI_CONTENT_TOP, 1U), value, DARKBLUE);
+
+    perf_baseline_format_triplet(value,
+                                 sizeof(value),
+                                 snapshot->lcd_dma_wait_last_us,
+                                 snapshot->lcd_dma_wait_avg_us,
+                                 snapshot->lcd_dma_wait_max_us,
+                                 (snapshot->lcd_dma_wait_samples != 0U) ? 1U : 0U);
+    perf_baseline_draw_timing_value_text(page_list_item_y(UI_CONTENT_TOP, 2U), value, DARKBLUE);
+
+    perf_baseline_format_triplet(value,
+                                 sizeof(value),
+                                 snapshot->lcd_dma_spi_idle_last_us,
+                                 snapshot->lcd_dma_spi_idle_avg_us,
+                                 snapshot->lcd_dma_spi_idle_max_us,
+                                 (snapshot->lcd_dma_spi_idle_samples != 0U) ? 1U : 0U);
+    perf_baseline_draw_timing_value_text(page_list_item_y(UI_CONTENT_TOP, 3U), value, DARKBLUE);
+
+    perf_baseline_format_triplet(overlay,
+                                 sizeof(overlay),
+                                 snapshot->lcd_dma_overlay_last_us,
+                                 snapshot->lcd_dma_overlay_avg_us,
+                                 snapshot->lcd_dma_overlay_max_us,
+                                 (snapshot->lcd_dma_overlay_samples != 0U) ? 1U : 0U);
+    snprintf(footer1, sizeof(footer1), "Ovly %s", overlay);
+    snprintf(footer2, sizeof(footer2), "6R-D1:%s S:%lu", d1_state, stripe_rows);
+    perf_baseline_draw_footer_text(footer1, footer2);
+}
+
 static void perf_baseline_draw_counters(const app_perf_baseline_snapshot_t *snapshot)
 {
     char value[24];
@@ -3226,6 +3294,9 @@ static void perf_baseline_render(uint8_t full_refresh)
         break;
     case 3U:
         perf_baseline_draw_health(&snapshot);
+        break;
+    case 4U:
+        perf_baseline_draw_lcd_dma_detail(&snapshot);
         break;
     case 0U:
     default:

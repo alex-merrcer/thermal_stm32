@@ -100,6 +100,19 @@ static CCMRAM uint16_t g_outputColToInterpCol[LCD_W];
 static uint8_t s_renderMappingReady = 0U;
 #endif
 
+typedef struct {
+    uint32_t render_us;
+    uint32_t dma_start_us;
+    uint32_t dma_wait_us;
+    uint32_t spi_idle_wait_us;
+    uint32_t overlay_us;
+} lcd_dma_frame_perf_t;
+
+static lcd_dma_frame_perf_t s_lcd_dma_frame_perf;
+static void lcd_dma_perf_reset_frame(void);
+static void lcd_dma_perf_add_elapsed(uint32_t *accum, uint32_t start_cycle);
+static void lcd_dma_perf_commit_frame(void);
+
 /* 将任意整数裁剪到 0~255。 */
 static uint8_t clamp_to_u8(int32_t value)
 {
@@ -159,6 +172,7 @@ static void lcd_dma_overlay_crosshair_row(uint16_t out_row, uint8_t *buf)
 
     if (out_row == center_y)
     {
+        uint32_t overlay_start_cycle = app_perf_baseline_cycle_now();
         uint16_t out_x = 0U;
 
         for (out_x = left_start; out_x <= left_end && out_x < LCD_W; ++out_x)
@@ -170,13 +184,16 @@ static void lcd_dma_overlay_crosshair_row(uint16_t out_row, uint8_t *buf)
             lcd_dma_write_rgb565_pixel(buf, out_x, WHITE);
         }
         lcd_dma_write_rgb565_pixel(buf, center_x, RED);
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.overlay_us, overlay_start_cycle);
         return;
     }
 
     if ((out_row >= top_start && out_row <= top_end) ||
         (out_row >= bottom_start && out_row <= bottom_end))
     {
+        uint32_t overlay_start_cycle = app_perf_baseline_cycle_now();
         lcd_dma_write_rgb565_pixel(buf, center_x, WHITE);
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.overlay_us, overlay_start_cycle);
     }
 }
 
@@ -196,6 +213,30 @@ static uint16_t lcd_dma_scale_axis(uint16_t index, uint16_t output_count, uint16
 }
 
 /* 启动一次 DMA 行发送。 */
+static void lcd_dma_perf_reset_frame(void)
+{
+    memset(&s_lcd_dma_frame_perf, 0, sizeof(s_lcd_dma_frame_perf));
+}
+
+static void lcd_dma_perf_add_elapsed(uint32_t *accum, uint32_t start_cycle)
+{
+    if (accum == 0)
+    {
+        return;
+    }
+
+    *accum += app_perf_baseline_elapsed_us(start_cycle);
+}
+
+static void lcd_dma_perf_commit_frame(void)
+{
+    app_perf_baseline_record_lcd_dma_render_us(s_lcd_dma_frame_perf.render_us);
+    app_perf_baseline_record_lcd_dma_start_us(s_lcd_dma_frame_perf.dma_start_us);
+    app_perf_baseline_record_lcd_dma_wait_us(s_lcd_dma_frame_perf.dma_wait_us);
+    app_perf_baseline_record_lcd_dma_spi_idle_us(s_lcd_dma_frame_perf.spi_idle_wait_us);
+    app_perf_baseline_record_lcd_dma_overlay_us(s_lcd_dma_frame_perf.overlay_us);
+}
+
 static uint8_t lcd_dma_wait_stream_disabled(void)
 {
     uint32_t timeout = DMA_STREAM_DISABLE_WAIT_LOOPS;
@@ -223,6 +264,7 @@ static uint8_t lcd_dma_wait_stream_disabled(void)
 
 static uint8_t lcd_dma_wait_spi_idle(void)
 {
+    uint32_t wait_start_cycle = app_perf_baseline_cycle_now();
     uint32_t timeout = LCD_SPI_IDLE_WAIT_LOOPS;
 
     while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET)
@@ -232,6 +274,7 @@ static uint8_t lcd_dma_wait_spi_idle(void)
             s_dma_mode = LCD_DMA_MODE_IDLE;
             s_dma_last_result = 0U;
             s_dma_last_status = APP_PERF_LCD_DMA_STATUS_ERROR;
+            lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.spi_idle_wait_us, wait_start_cycle);
             return 0U;
         }
     }
@@ -244,19 +287,23 @@ static uint8_t lcd_dma_wait_spi_idle(void)
             s_dma_mode = LCD_DMA_MODE_IDLE;
             s_dma_last_result = 0U;
             s_dma_last_status = APP_PERF_LCD_DMA_STATUS_ERROR;
+            lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.spi_idle_wait_us, wait_start_cycle);
             return 0U;
         }
     }
 
+    lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.spi_idle_wait_us, wait_start_cycle);
     return 1U;
 }
 
 static uint8_t start_dma_line_transfer(uint8_t *buf, uint16_t row_count)
 {
+    uint32_t start_cycle = app_perf_baseline_cycle_now();
     uint16_t transfer_size = 0U;
 
     if (buf == 0 || row_count == 0U || lcd_dma_wait_stream_disabled() == 0U)
     {
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_start_us, start_cycle);
         return 0U;
     }
 
@@ -275,6 +322,7 @@ static uint8_t start_dma_line_transfer(uint8_t *buf, uint16_t row_count)
     DMA2_Stream3->M0AR = (uint32_t)buf;
     DMA_SetCurrDataCounter(DMA2_Stream3, transfer_size);
     DMA_Cmd(DMA2_Stream3, ENABLE);
+    lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_start_us, start_cycle);
     return 1U;
 }
 
@@ -285,6 +333,7 @@ static uint8_t lcd_dma_scheduler_running(void)
 
 static uint8_t lcd_dma_wait_busy_loop(void)
 {
+    uint32_t wait_start_cycle = app_perf_baseline_cycle_now();
     uint32_t timeout = DMA_TRANSFER_WAIT_LOOPS;
 
     while (!transferComplete)
@@ -302,15 +351,18 @@ static uint8_t lcd_dma_wait_busy_loop(void)
             transferComplete = 1U;
             s_dma_last_result = 0U;
             s_dma_last_status = APP_PERF_LCD_DMA_STATUS_TIMEOUT;
+            lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
             return 0U;
         }
     }
 
     if (s_dma_last_result != 0U)
     {
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
         return lcd_dma_wait_spi_idle();
     }
 
+    lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
     return 0U;
 }
 
@@ -319,6 +371,7 @@ static uint8_t lcd_dma_wait_busy_loop(void)
 static uint8_t wait_for_dma_transfer_complete(void)
 {
 #if APP_DISPLAY_STAGE3_ENABLE
+    uint32_t wait_start_cycle = app_perf_baseline_cycle_now();
     TickType_t wait_ticks = pdMS_TO_TICKS(DMA_TRANSFER_WAIT_TIMEOUT_MS);
     TaskHandle_t current_task = 0;
 
@@ -331,9 +384,11 @@ static uint8_t wait_for_dma_transfer_complete(void)
     {
         if (s_dma_last_result != 0U)
         {
+            lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
             return lcd_dma_wait_spi_idle();
         }
 
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
         return 0U;
     }
 
@@ -357,9 +412,11 @@ static uint8_t wait_for_dma_transfer_complete(void)
         taskEXIT_CRITICAL();
         if (s_dma_last_result != 0U)
         {
+            lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
             return lcd_dma_wait_spi_idle();
         }
 
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
         return 0U;
     }
 
@@ -383,15 +440,18 @@ static uint8_t wait_for_dma_transfer_complete(void)
         transferComplete = 1U;
         s_dma_last_result = 0U;
         s_dma_last_status = APP_PERF_LCD_DMA_STATUS_TIMEOUT;
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
         return 0U;
     }
 
     app_perf_baseline_record_dma_wait_take();
     if (s_dma_last_result != 0U)
     {
+        lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
         return lcd_dma_wait_spi_idle();
     }
 
+    lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.dma_wait_us, wait_start_cycle);
     return 0U;
 #else
     return lcd_dma_wait_busy_loop();
@@ -705,6 +765,7 @@ static uint16_t lcd_dma_get_stripe_row_count(uint16_t start_row)
 
 static void render_output_rows_to_buffer(uint16_t start_row, uint16_t row_count, uint8_t *buf)
 {
+    uint32_t render_start_cycle = app_perf_baseline_cycle_now();
     uint16_t stripe_row = 0U;
 
     if (buf == 0)
@@ -717,6 +778,8 @@ static void render_output_rows_to_buffer(uint16_t start_row, uint16_t row_count,
         render_output_row_to_buffer((uint16_t)(start_row + stripe_row),
                                     &buf[(uint32_t)stripe_row * LINE_BUF_SIZE]);
     }
+
+    lcd_dma_perf_add_elapsed(&s_lcd_dma_frame_perf.render_us, render_start_cycle);
 }
 
 void MYDMA_Config(void)
@@ -1098,6 +1161,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
         return 0U;
     }
 
+    lcd_dma_perf_reset_frame();
     app_perf_baseline_record_lcd_dma_enter();
 #if LCD_DMA_STAGE6_6B_ACTIVE
     lcd_dma_init_render_mappings();
@@ -1115,6 +1179,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
     if (start_dma_line_transfer(lineBuffer[tx_buffer_index], transfer_row_count) == 0U) {
         LCD_CS_Set();
         s_dma_mode = LCD_DMA_MODE_IDLE;
+        lcd_dma_perf_commit_frame();
         app_perf_baseline_record_lcd_dma_result(app_perf_baseline_elapsed_us(start_cycle),
                                                 s_dma_last_status);
         return 0U;
@@ -1130,6 +1195,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
         if (wait_for_dma_transfer_complete() == 0U) {
             LCD_CS_Set();
             s_dma_mode = LCD_DMA_MODE_IDLE;
+            lcd_dma_perf_commit_frame();
             app_perf_baseline_record_lcd_dma_result(app_perf_baseline_elapsed_us(start_cycle),
                                                     s_dma_last_status);
             return 0U;
@@ -1141,6 +1207,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
         if (start_dma_line_transfer(lineBuffer[tx_buffer_index], transfer_row_count) == 0U) {
             LCD_CS_Set();
             s_dma_mode = LCD_DMA_MODE_IDLE;
+            lcd_dma_perf_commit_frame();
             app_perf_baseline_record_lcd_dma_result(app_perf_baseline_elapsed_us(start_cycle),
                                                     s_dma_last_status);
             return 0U;
@@ -1152,6 +1219,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
     if (wait_for_dma_transfer_complete() == 0U) {
         LCD_CS_Set();
         s_dma_mode = LCD_DMA_MODE_IDLE;
+        lcd_dma_perf_commit_frame();
         app_perf_baseline_record_lcd_dma_result(app_perf_baseline_elapsed_us(start_cycle),
                                                 s_dma_last_status);
         return 0U;
@@ -1159,6 +1227,7 @@ uint8_t LCD_Disp_Thermal_Interpolated_DMA(uint8_t *data24x32)
 
     LCD_CS_Set();
     s_dma_mode = LCD_DMA_MODE_IDLE;
+    lcd_dma_perf_commit_frame();
     app_perf_baseline_record_lcd_dma_result(app_perf_baseline_elapsed_us(start_cycle),
                                             APP_PERF_LCD_DMA_STATUS_OK);
     return 1U;
